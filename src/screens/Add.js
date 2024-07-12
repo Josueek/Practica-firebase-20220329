@@ -2,18 +2,19 @@ import React, { useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, Image, Alert } from 'react-native';
 import { database, storage } from '../config/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { collection, addDoc } from 'firebase/firestore';
+import { collection, addDoc, doc, setDoc } from 'firebase/firestore';
 import * as ImagePicker from 'expo-image-picker';
 
-// Componente Add para agregar un nuevo producto
-const Add = ({ navigation }) => {
+// Componente Add para agregar o actualizar un producto
+const Add = ({ navigation, route }) => {
     // Estado inicial del producto
     const [producto, setProducto] = useState({
-        nombre: '',
-        precio: 0,
-        vendido: false,
-        creado: new Date(),
-        imagen: ''
+        id: route?.params?.id || null,
+        nombre: route?.params?.nombre || '',
+        precio: route?.params?.precio || 0,
+        vendido: route?.params?.vendido || false,
+        creado: route?.params?.creado || new Date(),
+        imagen: route?.params?.imagen || ''
     });
 
     // Función para navegar a la pantalla de inicio
@@ -43,12 +44,12 @@ const Add = ({ navigation }) => {
         }
     };
 
-    // Función para agregar el producto a Firestore
-    const agregarProducto = async () => {
+    // Función para agregar o actualizar el producto en Firestore
+    const guardarProducto = async () => {
         try {
-            let imageUrl = null;
+            let imageUrl = producto.imagen;
 
-            if (producto.imagen) {
+            if (producto.imagen && !producto.imagen.startsWith('http')) {
                 console.log('Subiendo imagen a Firebase Storage...');
                 const imageRef = ref(storage, `images/${Date.now()}-${producto.nombre}`);
 
@@ -63,24 +64,34 @@ const Add = ({ navigation }) => {
                 console.log("URL de la imagen:", imageUrl);
             }
 
-            console.log('Datos del producto:', {...producto, imagen: imageUrl});
-            await addDoc(collection(database, 'productos'), {...producto, imagen: imageUrl});
-            console.log('Se guardó la colección');
+            const productoData = { ...producto, imagen: imageUrl };
+            console.log('Datos del producto:', productoData);
 
-            Alert.alert('Producto agregado', 'El producto se agregó correctamente', [
+            if (producto.id) {
+                // Actualizar producto existente
+                const productRef = doc(database, 'productos', producto.id);
+                await setDoc(productRef, productoData);
+                console.log('Producto actualizado');
+            } else {
+                // Agregar nuevo producto
+                await addDoc(collection(database, 'productos'), productoData);
+                console.log('Producto agregado');
+            }
+
+            Alert.alert('Producto guardado', 'El producto se guardó correctamente', [
                 { text: 'Ok', onPress: goToHome },
             ]);
 
             goToHome();
         } catch (error) {
-            console.error('Error al agregar el producto', error);
-            Alert.alert('Error', 'Ocurrió un error al agregar el producto. Por favor, intenta nuevamente.');
+            console.error('Error al guardar el producto', error);
+            Alert.alert('Error', 'Ocurrió un error al guardar el producto. Por favor, intenta nuevamente.');
         }
     };
 
     return (
         <View style={styles.container}>
-            <Text style={styles.title}>Agregar producto</Text>
+            <Text style={styles.title}>{producto.id ? 'Actualizar producto' : 'Agregar producto'}</Text>
             <View style={styles.inputContainer}>
                 <Text style={styles.label}>Nombre:</Text>
                 <TextInput
@@ -94,7 +105,7 @@ const Add = ({ navigation }) => {
                 <TextInput
                     style={styles.input}
                     onChangeText={text => setProducto({ ...producto, precio: parseFloat(text) })}
-                    value={producto.precio}
+                    value={producto.precio.toString()}
                     keyboardType='numeric'
                 />
             </View>
@@ -104,8 +115,8 @@ const Add = ({ navigation }) => {
             </TouchableOpacity>
             {producto.imagen ? <Image source={{ uri: producto.imagen }} style={styles.imagePreview} /> : null}
 
-            <TouchableOpacity style={styles.button} onPress={agregarProducto}>
-                <Text style={styles.buttonText}>Agregar producto</Text>
+            <TouchableOpacity style={styles.button} onPress={guardarProducto}>
+                <Text style={styles.buttonText}>{producto.id ? 'Actualizar producto' : 'Agregar producto'}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity style={styles.button} onPress={goToHome}>
